@@ -4,7 +4,7 @@
 
 🌐 **Demo Aplikasi**: [https://sipedu.vercel.app/](https://sipedu.vercel.app/)
 
-![Dashboard SIPEDU]<img width="1919" height="918" alt="image" src="https://github.com/user-attachments/assets/a230c461-e0ea-49fd-a069-05914c07ee77" />
+<img width="1919" height="918" alt="image" src="https://github.com/user-attachments/assets/a230c461-e0ea-49fd-a069-05914c07ee77" />
 
 
 ## 📋 Deskripsi Proyek
