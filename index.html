@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIG Kepadatan Penduduk – Kota Bandar Lampung</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Data QGIS asli (polygon kelurahan/kecamatan Bandar Lampung) -->
+<script src="qgis2web_2026_06_02-14_32_02_704429/data/idn_admbnda_adm4_ID1_bps_20200401_1.js"></script>
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --bg2: #111827;
+    --bg3: #1a2235;
+    --border: rgba(255,255,255,0.08);
+    --border2: rgba(255,255,255,0.14);
+    --text: #f0f4ff;
+    --text2: #8b98b8;
+    --text3: #4a5568;
+    --accent: #3b82f6;
+    --accent2: #60a5fa;
+    --font: 'Space Grotesk', sans-serif;
+    --mono: 'JetBrains Mono', monospace;
+
+    /* Choropleth Kepadatan Penduduk Colors (YlOrRd SIG Standard) */
+    --c-sangat-tinggi: #800026;
+    --c-tinggi: #e31a1c;
+    --c-sedang: #fd8d3c;
+    --c-rendah: #fecc5c;
+    --c-sangat-rendah: #ffffb2;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* HEADER */
+  header {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 0 1.5rem;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    z-index: 1000;
+  }
+
+  .header-left { display: flex; align-items: center; gap: 12px; }
+
+  .logo-icon {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, #800026, #e31a1c);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .logo-icon svg { width: 20px; height: 20px; fill: white; }
+
+  .header-title h1 { font-size: 15px; font-weight: 700; color: var(--text); letter-spacing: -0.3px; }
+  .header-title p { font-size: 11px; color: var(--text2); font-family: var(--mono); }
+
+  .header-right { display: flex; align-items: center; gap: 12px; }
+
+  .badge-qgis {
+    background: rgba(34,197,94,0.15);
+    border: 1px solid rgba(34,197,94,0.35);
+    color: #4ade80;
+    font-size: 11px; font-family: var(--mono);
+    padding: 4px 10px; border-radius: 20px; letter-spacing: 0.5px;
+  }
+  .badge-year {
+    background: rgba(96,165,250,0.15);
+    border: 1px solid rgba(96,165,250,0.3);
+    color: var(--accent2);
+    font-size: 11px; font-family: var(--mono);
+    padding: 4px 10px; border-radius: 20px;
+  }
+
+  /* MAIN LAYOUT */
+  .main { display: flex; flex: 1; overflow: hidden; }
+
+  /* SIDEBAR */
+  .sidebar {
+    width: 320px; flex-shrink: 0;
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  .sidebar-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+  }
+
+  .tab-btn {
+    flex: 1; padding: 10px 0;
+    font-size: 12px; font-family: var(--font); font-weight: 500;
+    background: none; border: none; color: var(--text2);
+    cursor: pointer; transition: all 0.2s;
+    border-bottom: 2px solid transparent; letter-spacing: 0.2px;
+  }
+  .tab-btn.active { color: var(--accent2); border-bottom-color: var(--accent2); background: rgba(59,130,246,0.05); }
+
+  .tab-content { display: none; flex: 1; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border2) transparent; }
+  .tab-content.active { display: block; }
+
+  /* STATS CARDS */
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 14px; }
+  .stat-card {
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px;
+  }
+  .stat-card .label { font-size: 10px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 6px; }
+  .stat-card .value { font-size: 20px; font-weight: 700; line-height: 1; font-family: var(--mono); }
+  .stat-card .sub { font-size: 10px; color: var(--text2); margin-top: 3px; }
+  .stat-card.danger .value { color: #ff4d6d; }
+  .stat-card.warning .value { color: #ff7b00; }
+  .stat-card.safe .value { color: #ffb703; }
+  .stat-card.info .value { color: #cbd5e1; }
+
+  /* LEGEND */
+  .legend-section { padding: 0 14px 14px; }
+  .section-title {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--text2); margin-bottom: 10px; padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+
+  .legend-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: 8px; margin-bottom: 4px;
+    cursor: pointer; transition: background 0.15s; border: 1px solid transparent;
+  }
+  .legend-item:hover { background: var(--bg3); border-color: var(--border); }
+  .legend-item.active { background: var(--bg3); border-color: var(--border2); }
+  .legend-dot { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; }
+  .legend-text { flex: 1; }
+  .legend-text .name { font-size: 13px; font-weight: 500; }
+  .legend-text .desc { font-size: 10px; color: var(--text2); margin-top: 1px; }
+  .legend-count { font-size: 11px; font-family: var(--mono); font-weight: 600; padding: 2px 7px; border-radius: 10px; background: rgba(255,255,255,0.06); }
+
+  /* KECAMATAN LIST */
+  .kec-list { padding: 0 14px 14px; }
+  .kec-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border-radius: 10px; margin-bottom: 6px;
+    background: var(--bg3); border: 1px solid var(--border);
+    cursor: pointer; transition: all 0.2s;
+  }
+  .kec-item:hover { border-color: var(--accent); background: rgba(59,130,246,0.05); }
+  .kec-item.selected { border-color: var(--accent2); background: rgba(59,130,246,0.1); }
+  .kec-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .kec-info { flex: 1; }
+  .kec-name { font-size: 13px; font-weight: 600; }
+  .kec-sub { font-size: 10px; color: var(--text2); margin-top: 2px; }
+  .kec-level { font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 12px; letter-spacing: 0.3px; }
+
+  /* DETAIL PANEL */
+  .detail-panel { padding: 14px; }
+  .detail-empty { text-align: center; padding: 40px 20px; color: var(--text2); }
+  .detail-empty .icon { font-size: 40px; margin-bottom: 12px; }
+  .detail-empty p { font-size: 13px; }
+  .detail-card { background: var(--bg3); border: 1px solid var(--border2); border-radius: 12px; overflow: hidden; }
+  .detail-header { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .detail-header h3 { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+  .detail-header p { font-size: 11px; color: var(--text2); }
+  .detail-level-badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 4px 12px; border-radius: 20px; margin-top: 8px; letter-spacing: 0.5px; }
+  .detail-body { padding: 14px 16px; }
+  .detail-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+  .detail-row:last-child { border-bottom: none; }
+  .detail-row .key { color: var(--text2); }
+  .detail-row .val { font-weight: 600; font-family: var(--mono); }
+  .risk-bar-wrap { margin-top: 12px; }
+  .risk-bar-label { font-size: 11px; color: var(--text2); margin-bottom: 6px; }
+  .risk-bar-bg { background: rgba(255,255,255,0.06); border-radius: 4px; height: 8px; overflow: hidden; }
+  .risk-bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+
+  /* Kelurahan list in detail */
+  .kel-list { margin-top: 14px; }
+  .kel-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text2); margin-bottom: 8px; }
+  .kel-item { font-size: 12px; padding: 4px 0; border-bottom: 1px solid var(--border); color: var(--text); display: flex; align-items: center; gap: 6px; }
+  .kel-item:last-child { border-bottom: none; }
+  .kel-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent2); flex-shrink: 0; }
+
+  /* MAP CONTAINER */
+  .map-wrap { flex: 1; position: relative; overflow: hidden; }
+  #map { width: 100%; height: 100%; }
+
+  /* LEAFLET OVERRIDES */
+  .leaflet-container { background: #0d1626; font-family: var(--font); }
+  .leaflet-popup-content-wrapper {
+    background: #1a2235; color: var(--text);
+    border: 1px solid var(--border2); border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5); font-family: var(--font);
+  }
+  .leaflet-popup-tip { background: #1a2235; }
+  .leaflet-popup-content { margin: 14px 16px; min-width: 220px; }
+  .popup-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+  .popup-sub { font-size: 11px; color: var(--text2); margin-bottom: 10px; }
+  .popup-level { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; margin-bottom: 10px; }
+  .popup-row { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 0; border-bottom: 1px solid var(--border); }
+  .popup-row:last-child { border: none; }
+  .popup-row .k { color: var(--text2); }
+  .popup-row .v { font-weight: 600; font-family: var(--mono); }
+
+  /* MAP CONTROLS */
+  .map-controls { position: absolute; top: 14px; right: 14px; z-index: 1000; display: flex; flex-direction: column; gap: 8px; }
+  .map-ctrl-btn {
+    background: var(--bg2); border: 1px solid var(--border2);
+    color: var(--text); width: 36px; height: 36px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; font-size: 16px; transition: all 0.15s;
+  }
+  .map-ctrl-btn:hover { background: var(--bg3); border-color: var(--accent); color: var(--accent2); }
+
+  /* FILTER BAR */
+  .filter-bar { position: absolute; top: 14px; left: 14px; z-index: 1000; display: flex; gap: 6px; flex-wrap: wrap; max-width: 450px; }
+  .filter-btn {
+    background: var(--bg2); border: 1px solid var(--border); color: var(--text2);
+    font-size: 11px; font-family: var(--font); font-weight: 500;
+    padding: 5px 12px; border-radius: 20px; cursor: pointer; transition: all 0.2s;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .filter-btn .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .filter-btn.active { color: var(--text); border-color: var(--border2); background: var(--bg3); }
+  .filter-btn.active.f-sangat { border-color: #800026; background: rgba(128,0,38,0.25); color: #fca5a5; }
+  .filter-btn.active.f-tinggi { border-color: #e31a1c; background: rgba(227,26,28,0.25); color: #fecaca; }
+  .filter-btn.active.f-sedang { border-color: #fd8d3c; background: rgba(253,141,60,0.25); color: #fed7aa; }
+  .filter-btn.active.f-rendah { border-color: #fecc5c; background: rgba(254,204,92,0.25); color: #fef08a; }
+  .filter-btn.active.f-sangat-rendah { border-color: #d9f99d; background: rgba(255,255,178,0.15); color: #e2e8f0; }
+
+  /* BOTTOM STATUS BAR */
+  .status-bar {
+    position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+    background: var(--bg2); border: 1px solid var(--border2);
+    border-radius: 20px; padding: 6px 16px; font-size: 11px;
+    color: var(--text2); font-family: var(--mono); z-index: 1000; white-space: nowrap;
+  }
+
+  @media (max-width: 768px) {
+    .sidebar { width: 280px; }
+    .header-title p { display: none; }
+    .badge-year { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+    </div>
+    <div class="header-title">
+      <h1>SIG Kepadatan Penduduk – Kota Bandar Lampung</h1>
+      <p>Sistem Informasi Geografis · Data BPS 2024 · Poligon QGIS Asli</p>
+    </div>
+  </div>
+  <div class="header-right">
+    <span class="badge-qgis">✓ DATA QGIS ASLI</span>
+    <span class="badge-year">2024</span>
+  </div>
+</header>
+
+<div class="main">
+  <div class="sidebar">
+    <div class="sidebar-tabs">
+      <button class="tab-btn active" onclick="switchTab('ringkasan', this)">Ringkasan</button>
+      <button class="tab-btn" onclick="switchTab('kecamatan', this)">Kecamatan</button>
+      <button class="tab-btn" onclick="switchTab('detail', this)">Detail</button>
+    </div>
+
+    <div id="tab-ringkasan" class="tab-content active">
+      <div class="stats-grid" id="statsGrid">
+        <!-- Diisi oleh JS -->
+      </div>
+
+      <div class="legend-section">
+        <div class="section-title">Legenda Tingkat Kepadatan</div>
+        <div class="legend-item active" onclick="filterLayer('all', this)" id="leg-all">
+          <div class="legend-dot" style="background:linear-gradient(45deg,#800026,#e31a1c,#fd8d3c,#fecc5c,#ffffb2)"></div>
+          <div class="legend-text">
+            <div class="name">Semua Wilayah</div>
+            <div class="desc">Total Kecamatan Terdata</div>
+          </div>
+          <span class="legend-count" style="color:var(--text2)" id="cnt-all">20</span>
+        </div>
+        <div class="legend-item" onclick="filterLayer('sangat_tinggi', this)" id="leg-sangat_tinggi">
+          <div class="legend-dot" style="background:#800026"></div>
+          <div class="legend-text"><div class="name">Sangat Padat</div><div class="desc">&gt; 14.000 jiwa/km²</div></div>
+          <span class="legend-count" style="color:#ff4d6d" id="cnt-sangat_tinggi">-</span>
+        </div>
+        <div class="legend-item" onclick="filterLayer('tinggi', this)" id="leg-tinggi">
+          <div class="legend-dot" style="background:#e31a1c"></div>
+          <div class="legend-text"><div class="name">Padat</div><div class="desc">10.000 – 14.000 jiwa/km²</div></div>
+          <span class="legend-count" style="color:#ff7b00" id="cnt-tinggi">-</span>
+        </div>
+        <div class="legend-item" onclick="filterLayer('sedang', this)" id="leg-sedang">
+          <div class="legend-dot" style="background:#fd8d3c"></div>
+          <div class="legend-text"><div class="name">Cukup Padat</div><div class="desc">6.000 – 10.000 jiwa/km²</div></div>
+          <span class="legend-count" style="color:#ffb703" id="cnt-sedang">-</span>
+        </div>
+        <div class="legend-item" onclick="filterLayer('rendah', this)" id="leg-rendah">
+          <div class="legend-dot" style="background:#fecc5c"></div>
+          <div class="legend-text"><div class="name">Rendah</div><div class="desc">3.000 – 6.000 jiwa/km²</div></div>
+          <span class="legend-count" style="color:#fecc5c" id="cnt-rendah">-</span>
+        </div>
+        <div class="legend-item" onclick="filterLayer('sangat_rendah', this)" id="leg-sangat_rendah">
+          <div class="legend-dot" style="background:#ffffb2; border:1px solid rgba(255,255,255,0.2)"></div>
+          <div class="legend-text"><div class="name">Sangat Rendah</div><div class="desc">&lt; 3.000 jiwa/km²</div></div>
+          <span class="legend-count" style="color:#ffffb2" id="cnt-sangat_rendah">-</span>
+        </div>
+      </div>
+
+      <div class="legend-section">
+        <div class="section-title">Informasi Makro Kota</div>
+        <div style="padding:4px 0">
+          <div class="detail-row"><span class="key">Sumber Data</span><span class="val" style="color:var(--accent2)">BPS · QGIS2Web</span></div>
+          <div class="detail-row"><span class="key">Tahun Data</span><span class="val" style="color:var(--accent2)">2024</span></div>
+          <div class="detail-row"><span class="key">Rerata Kepadatan</span><span class="val" style="color:#ff7b00" id="macroRerata">-</span></div>
+          <div class="detail-row"><span class="key">Kecamatan Terpadat</span><span class="val" style="color:#ff4d6d" id="macroTerpadat">-</span></div>
+          <div class="detail-row"><span class="key">Total Kecamatan</span><span class="val" id="macroTotal">-</span></div>
+          <div class="detail-row"><span class="key">Metode Klasifikasi</span><span class="val">Choropleth (Poligon Asli)</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-kecamatan" class="tab-content">
+      <div class="kec-list" id="kecList" style="padding-top:14px"></div>
+    </div>
+
+    <div id="tab-detail" class="tab-content">
+      <div class="detail-panel">
+        <div class="detail-empty" id="detailEmpty">
+          <div class="icon">📍</div>
+          <p>Klik area poligon kecamatan pada peta atau pilih list kecamatan untuk melihat detail &amp; kelurahan</p>
+        </div>
+        <div id="detailContent" style="display:none"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="map-wrap">
+    <div id="map"></div>
+
+    <div class="filter-bar" id="filterBar">
+      <button class="filter-btn active f-all" onclick="filterLayer('all', this)"><span class="dot" style="background:#888"></span> Semua</button>
+      <button class="filter-btn f-sangat" onclick="filterLayer('sangat_tinggi', this)"><span class="dot" style="background:#800026"></span> &gt;14K</button>
+      <button class="filter-btn f-tinggi" onclick="filterLayer('tinggi', this)"><span class="dot" style="background:#e31a1c"></span> 10K–14K</button>
+      <button class="filter-btn f-sedang" onclick="filterLayer('sedang', this)"><span class="dot" style="background:#fd8d3c"></span> 6K–10K</button>
+      <button class="filter-btn f-rendah" onclick="filterLayer('rendah', this)"><span class="dot" style="background:#fecc5c"></span> 3K–6K</button>
+      <button class="filter-btn f-sangat-rendah" onclick="filterLayer('sangat_rendah', this)"><span class="dot" style="background:#ffffb2"></span> &lt;3K</button>
+    </div>
+
+    <div class="map-controls">
+      <div class="map-ctrl-btn" onclick="resetView()" title="Reset View">⌂</div>
+      <div class="map-ctrl-btn" onclick="toggleLabels()" title="Toggle Label" id="labelBtn">A</div>
+    </div>
+
+    <div class="status-bar" id="statusBar">
+      📍 Bandar Lampung · Memuat data QGIS...
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// KONFIGURASI CHOROPLETH
+// ============================================================
+const DENSITY_KEY = "Kepadatan Penduduk Menurut Kecamatan per km2, 2024 — Sheet1_Field2";
+
+const levelConfig = {
+  sangat_tinggi: { color: "#800026", fillOpacity: 0.70, label: "Sangat Padat (>14K)", bg: "rgba(128,0,38,0.2)", min: 14000, max: Infinity },
+  tinggi:        { color: "#e31a1c", fillOpacity: 0.60, label: "Padat (10K–14K)",     bg: "rgba(227,26,28,0.2)", min: 10000, max: 14000 },
+  sedang:        { color: "#fd8d3c", fillOpacity: 0.55, label: "Cukup Padat (6K–10K)", bg: "rgba(253,141,60,0.2)", min: 6000, max: 10000 },
+  rendah:        { color: "#fecc5c", fillOpacity: 0.50, label: "Rendah (3K–6K)",      bg: "rgba(254,204,92,0.2)", min: 3000, max: 6000 },
+  sangat_rendah: { color: "#ffffb2", fillOpacity: 0.40, label: "Sangat Rendah (<3K)", bg: "rgba(255,255,178,0.1)", min: 0, max: 3000 },
+};
+
+function getLevel(density) {
+  if (density === null || density === undefined) return null;
+  const d = parseInt(density);
+  if (isNaN(d)) return null;
+  if (d >= 14000) return 'sangat_tinggi';
+  if (d >= 10000) return 'tinggi';
+  if (d >= 6000)  return 'sedang';
+  if (d >= 3000)  return 'rendah';
+  return 'sangat_rendah';
+}
+
+// ============================================================
+// INISIALISASI PETA
+// ============================================================
+const map = L.map('map', {
+  zoomControl: false,
+  maxZoom: 18, minZoom: 10
+}).fitBounds([[-5.455, 105.205], [-5.379, 105.351]]);
+
+// Basemap gelap (CartoDB Dark)
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '© OpenStreetMap © CARTO | Data BPS 2024 via QGIS',
+  subdomains: 'abcd', maxZoom: 18
+}).addTo(map);
+
+L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+// ============================================================
+// PENGOLAHAN DATA QGIS → KECAMATAN AGGREGASI
+// ============================================================
+const kecamatanMap = {}; // ADM3_EN → { density, level, kelurahan[], bounds, centroid }
+const featureLayers = []; // { feature, layer, kecName, level }
+const labelMarkers = [];
+let showLabels = true;
+let currentFilter = 'all';
+let selectedKec = null;
+
+// Kelompokkan fitur per kecamatan
+if (typeof json_idn_admbnda_adm4_ID1_bps_20200401_1 !== 'undefined') {
+  json_idn_admbnda_adm4_ID1_bps_20200401_1.features.forEach(f => {
+    const p = f.properties;
+    const kecName = p['ADM3_EN'];
+    const kelName = p['ADM4_EN'];
+    const density = p[DENSITY_KEY];
+
+    if (!kecName) return;
+    if (!kecamatanMap[kecName]) {
+      kecamatanMap[kecName] = {
+        name: kecName,
+        density: parseInt(density) || 0,
+        level: getLevel(density),
+        kelurahan: [],
+        bounds: null,
+      };
+    }
+    if (kelName) kecamatanMap[kecName].kelurahan.push(kelName);
+  });
+}
+
+const kecamatanList = Object.values(kecamatanMap).sort((a,b) => b.density - a.density);
+
+// ============================================================
+// GAMBAR LAYER GEOJSON (POLYGON ASLI DARI QGIS)
+// ============================================================
+const kecLayerMap = {}; // kecName → L.layerGroup (semua kelurahan dalam kecamatan itu)
+
+if (typeof json_idn_admbnda_adm4_ID1_bps_20200401_1 !== 'undefined') {
+  const geojsonLayer = L.geoJSON(json_idn_admbnda_adm4_ID1_bps_20200401_1, {
+    style: function(feature) {
+      const density = feature.properties[DENSITY_KEY];
+      const level = getLevel(density);
+      const cfg = level ? levelConfig[level] : { color: '#555', fillOpacity: 0.2 };
+      return {
+        color: '#1e293b', weight: 1.0,
+        fillColor: cfg.color, fillOpacity: cfg.fillOpacity,
+        opacity: 0.9
+      };
+    },
+    onEachFeature: function(feature, layer) {
+      const p = feature.properties;
+      const kecName = p['ADM3_EN'];
+      const density = parseInt(p[DENSITY_KEY]) || 0;
+      const level = getLevel(p[DENSITY_KEY]);
+      const cfg = level ? levelConfig[level] : { color: '#888', fillOpacity:0.3, label:'Tidak ada data', bg:'rgba(100,100,100,0.2)' };
+
+      // Track bounds tiap kecamatan
+      if (kecName && kecamatanMap[kecName]) {
+        try {
+          const lb = layer.getBounds();
+          if (!kecamatanMap[kecName].bounds) {
+            kecamatanMap[kecName].bounds = lb;
+          } else {
+            kecamatanMap[kecName].bounds.extend(lb);
+          }
+        } catch(e) {}
+      }
+
+      // Popup content
+      const popupContent = `
+        <div class="popup-title">Kel. ${p['ADM4_EN'] || '-'}</div>
+        <div class="popup-sub">Kec. ${kecName} · Kota Bandar Lampung</div>
+        ${level ? `<span class="popup-level" style="background:${cfg.bg};color:${cfg.color};border:1px solid ${cfg.color}50">${cfg.label}</span>` : ''}
+        <div class="popup-row"><span class="k">Kepadatan Kecamatan</span><span class="v" style="color:${cfg.color}">${density > 0 ? density.toLocaleString('id-ID') + ' jiwa/km²' : 'N/A'}</span></div>
+        <div class="popup-row"><span class="k">Kode ADM4</span><span class="v">${p['ADM4_PCODE'] || '-'}</span></div>
+        <div class="popup-row"><span class="k">Luas (ADM area)</span><span class="v">${p['Shape_Area'] ? (p['Shape_Area']*12321).toFixed(2) + ' km²' : '-'}</span></div>
+      `;
+      layer.bindPopup(popupContent, { maxWidth: 280 });
+
+      layer.on('mouseover', function(e) {
+        this.setStyle({ fillOpacity: Math.min((level ? levelConfig[level].fillOpacity : 0.3) + 0.25, 0.95), weight: 2.0, color: '#f8fafc' });
+        updateStatus(`📍 Kel. ${p['ADM4_EN']} · Kec. ${kecName} — Kepadatan: ${density > 0 ? density.toLocaleString('id-ID') + ' jiwa/km²' : 'N/A'}`);
+        layer.openPopup();
+      });
+
+      layer.on('mouseout', function(e) {
+        geojsonLayer.resetStyle(this);
+        updateStatus(`📍 Bandar Lampung · ${kecamatanList.length} Kecamatan Terdata`);
+        layer.closePopup();
+      });
+
+      layer.on('click', function() {
+        if (kecName && kecamatanMap[kecName]) {
+          showDetail(kecamatanMap[kecName]);
+          highlightKecList(kecName);
+          switchTab('detail', null);
+          // Zoom ke kecamatan
+          if (kecamatanMap[kecName].bounds) {
+            map.flyToBounds(kecamatanMap[kecName].bounds, { padding: [40,40], duration: 1 });
+          }
+        }
+      });
+
+      featureLayers.push({ kecName, level, layer });
+
+      // Group per kecamatan
+      if (kecName) {
+        if (!kecLayerMap[kecName]) kecLayerMap[kecName] = [];
+        kecLayerMap[kecName].push(layer);
+      }
+    }
+  }).addTo(map);
+}
+
+// ============================================================
+// LABEL KECAMATAN (posisi centroid dari bounds)
+// ============================================================
+Object.values(kecamatanMap).forEach(kec => {
+  if (!kec.bounds) return;
+  const center = kec.bounds.getCenter();
+  const icon = L.divIcon({
+    className: '',
+    html: `<div style="font-size:9.5px;font-family:'Space Grotesk',sans-serif;color:rgba(255,255,255,0.88);white-space:nowrap;text-shadow:0 1px 4px rgba(0,0,0,1);font-weight:700;pointer-events:none;letter-spacing:0.2px">${kec.name}</div>`,
+    iconAnchor: [30, 0]
+  });
+  const m = L.marker([center.lat, center.lng], { icon, interactive: false }).addTo(map);
+  labelMarkers.push(m);
+});
+
+// ============================================================
+// HITUNG STATISTIK
+// ============================================================
+const levelCounts = { sangat_tinggi:0, tinggi:0, sedang:0, rendah:0, sangat_rendah:0 };
+let totalDensity = 0, densityCount = 0, maxDensity = 0, maxKecName = '-';
+
+kecamatanList.forEach(kec => {
+  if (kec.density > 0) {
+    totalDensity += kec.density;
+    densityCount++;
+    if (kec.density > maxDensity) { maxDensity = kec.density; maxKecName = kec.name; }
+  }
+  if (kec.level) levelCounts[kec.level]++;
+});
+
+const avgDensity = densityCount > 0 ? Math.round(totalDensity / densityCount) : 0;
+
+// Update counters
+document.getElementById('cnt-all').textContent = kecamatanList.length;
+document.getElementById('cnt-sangat_tinggi').textContent = levelCounts.sangat_tinggi;
+document.getElementById('cnt-tinggi').textContent = levelCounts.tinggi;
+document.getElementById('cnt-sedang').textContent = levelCounts.sedang;
+document.getElementById('cnt-rendah').textContent = levelCounts.rendah;
+document.getElementById('cnt-sangat_rendah').textContent = levelCounts.sangat_rendah;
+
+document.getElementById('macroRerata').textContent = avgDensity.toLocaleString('id-ID') + ' jiwa/km²';
+document.getElementById('macroTerpadat').textContent = maxKecName;
+document.getElementById('macroTotal').textContent = kecamatanList.length + ' kecamatan';
+
+// Stats cards
+document.getElementById('statsGrid').innerHTML = `
+  <div class="stat-card danger">
+    <div class="label">&gt; 14.000</div>
+    <div class="value">${levelCounts.sangat_tinggi}</div>
+    <div class="sub">Sangat Padat</div>
+  </div>
+  <div class="stat-card warning">
+    <div class="label">10K – 14K</div>
+    <div class="value">${levelCounts.tinggi}</div>
+    <div class="sub">Padat</div>
+  </div>
+  <div class="stat-card safe">
+    <div class="label">6K – 10K</div>
+    <div class="value">${levelCounts.sedang}</div>
+    <div class="sub">Cukup Padat</div>
+  </div>
+  <div class="stat-card info">
+    <div class="label">&lt; 6.000</div>
+    <div class="value">${levelCounts.rendah + levelCounts.sangat_rendah}</div>
+    <div class="sub">Rendah / S. Rendah</div>
+  </div>
+`;
+
+// ============================================================
+// SIDEBAR: LIST KECAMATAN
+// ============================================================
+function buildKecList() {
+  const container = document.getElementById('kecList');
+  container.innerHTML = kecamatanList.map(kec => {
+    const cfg = kec.level ? levelConfig[kec.level] : { color:'#555', bg:'rgba(80,80,80,0.2)' };
+    const levelLabel = kec.density >= 10000 ? 'Padat' : kec.density >= 6000 ? 'Sedang' : 'Rendah';
+    return `
+      <div class="kec-item" id="kec-item-${CSS.escape(kec.name)}" onclick="selectKec('${kec.name.replace(/'/g,"\\'")}')">
+        <div class="kec-dot" style="background:${cfg.color}"></div>
+        <div class="kec-info">
+          <div class="kec-name">${kec.name}</div>
+          <div class="kec-sub">${kec.density > 0 ? kec.density.toLocaleString('id-ID') + ' jiwa/km²' : 'Data N/A'} · ${kec.kelurahan.length} kelurahan</div>
+        </div>
+        <span class="kec-level" style="background:${cfg.bg};color:${cfg.color};border:1px solid ${cfg.color}30">${levelLabel}</span>
+      </div>
+    `;
+  }).join('');
+}
+buildKecList();
+
+// ============================================================
+// DETAIL PANEL
+// ============================================================
+function showDetail(kec) {
+  const cfg = kec.level ? levelConfig[kec.level] : { color:'#888', bg:'rgba(100,100,100,0.2)', label:'Tidak ada data' };
+  const nilaiPersen = maxDensity > 0 && kec.density > 0 ? Math.min((kec.density / maxDensity) * 100, 100) : 0;
+
+  // Kelurahan list
+  const kelHTML = kec.kelurahan.length > 0
+    ? `<div class="kel-list">
+        <div class="kel-title">${kec.kelurahan.length} Kelurahan</div>
+        ${kec.kelurahan.sort().map(k => `<div class="kel-item"><div class="kel-dot"></div>${k}</div>`).join('')}
+       </div>`
+    : '';
+
+  document.getElementById('detailEmpty').style.display = 'none';
+  const el = document.getElementById('detailContent');
+  el.style.display = 'block';
+  el.innerHTML = `
+    <div class="detail-card">
+      <div class="detail-header">
+        <h3>Kec. ${kec.name}</h3>
+        <p>Kota Bandar Lampung</p>
+        <span class="detail-level-badge" style="background:${cfg.bg};color:${cfg.color};border:1px solid ${cfg.color}40">
+          ${cfg.label || 'Tidak ada data'}
+        </span>
+      </div>
+      <div class="detail-body">
+        <div class="risk-bar-wrap">
+          <div class="risk-bar-label">Rasio Kepadatan terhadap Maks. Kota</div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div class="risk-bar-bg" style="flex:1">
+              <div class="risk-bar-fill" style="width:${nilaiPersen}%;background:${cfg.color}"></div>
+            </div>
+            <span style="font-size:13px;font-weight:700;font-family:var(--mono);color:${cfg.color}">${Math.round(nilaiPersen)}%</span>
+          </div>
+        </div>
+        <div style="margin-top:16px">
+          <div class="detail-row"><span class="key">Kepadatan (BPS 2024)</span><span class="val" style="color:${cfg.color};font-size:14px">${kec.density > 0 ? kec.density.toLocaleString('id-ID') + ' jiwa/km²' : 'N/A'}</span></div>
+          <div class="detail-row"><span class="key">Jumlah Kelurahan</span><span class="val">${kec.kelurahan.length} kelurahan</span></div>
+          <div class="detail-row"><span class="key">Sistem Koordinat</span><span class="val">WGS 84 (EPSG:4326)</span></div>
+          <div class="detail-row"><span class="key">Sumber Data</span><span class="val">BPS · QGIS2Web</span></div>
+        </div>
+        ${kelHTML}
+      </div>
+    </div>
+  `;
+}
+
+// ============================================================
+// INTERAKSI
+// ============================================================
+function filterLayer(level, btn) {
+  currentFilter = level;
+
+  // Update filter bar buttons
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  if (btn && btn.classList.contains('filter-btn')) btn.classList.add('active');
+
+  // Update legend items
+  document.querySelectorAll('.legend-item').forEach(el => el.classList.remove('active'));
+  const legEl = document.getElementById('leg-' + level);
+  if (legEl) legEl.classList.add('active');
+
+  // Show/hide layers
+  featureLayers.forEach(({ level: l, layer }) => {
+    if (level === 'all' || l === level) {
+      if (!map.hasLayer(layer)) map.addLayer(layer);
+    } else {
+      if (map.hasLayer(layer)) map.removeLayer(layer);
+    }
+  });
+}
+
+function selectKec(name) {
+  const kec = kecamatanMap[name];
+  if (!kec) return;
+
+  if (kec.bounds) {
+    map.flyToBounds(kec.bounds, { padding: [40,40], duration: 1.2 });
+  }
+
+  showDetail(kec);
+  highlightKecList(name);
+  switchTab('detail', null);
+}
+
+function highlightKecList(name) {
+  document.querySelectorAll('.kec-item').forEach(el => el.classList.remove('selected'));
+  // Find by content since ID uses CSS.escape
+  document.querySelectorAll('.kec-item').forEach(el => {
+    if (el.querySelector('.kec-name') && el.querySelector('.kec-name').textContent === name) {
+      el.classList.add('selected');
+      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  });
+}
+
+function switchTab(name, btnEl) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById(`tab-${name}`).classList.add('active');
+  if (btnEl) {
+    btnEl.classList.add('active');
+  } else {
+    const idx = { ringkasan: 0, kecamatan: 1, detail: 2 }[name];
+    document.querySelectorAll('.tab-btn')[idx].classList.add('active');
+  }
+}
+
+function resetView() {
+  map.flyToBounds([[-5.455, 105.205], [-5.379, 105.351]], { padding:[20,20], duration:1 });
+}
+
+function toggleLabels() {
+  showLabels = !showLabels;
+  labelMarkers.forEach(m => {
+    if (showLabels) map.addLayer(m);
+    else map.removeLayer(m);
+  });
+  document.getElementById('labelBtn').style.color = showLabels ? '' : 'var(--text3)';
+}
+
+function updateStatus(text) {
+  document.getElementById('statusBar').textContent = text;
+}
+
+// Status awal setelah data ter-load
+updateStatus(`📍 Bandar Lampung · ${kecamatanList.length} Kecamatan · ${Object.keys(kecamatanMap).reduce((t,k)=>t+kecamatanMap[k].kelurahan.length,0)} Kelurahan · Klik Poligon Wilayah`);
+</script>
+</body>
+</html>

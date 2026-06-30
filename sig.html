@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIG Kepadatan Penduduk – Kota Bandar Lampung</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght=400;500;600;700&family=JetBrains+Mono:wght=400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --bg2: #111827;
+    --bg3: #1a2235;
+    --border: rgba(255,255,255,0.08);
+    --border2: rgba(255,255,255,0.14);
+    --text: #f0f4ff;
+    --text2: #8b98b8;
+    --text3: #4a5568;
+    --accent: #3b82f6;
+    --accent2: #60a5fa;
+    --font: 'Space Grotesk', sans-serif;
+    --mono: 'JetBrains Mono', monospace;
+
+    /* Choropleth Kepadatan Penduduk Colors (YlOrRd SIG Standard) */
+    --c-sangat-tinggi: #800026;
+    --c-tinggi: #e31a1c;
+    --c-sedang: #fd8d3c;
+    --c-rendah: #fecc5c;
+    --c-sangat-rendah: #ffffb2;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* HEADER */
+  header {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 0 1.5rem;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    z-index: 1000;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .logo-icon {
+    width: 36px;
+    height: 36px;
+    background: linear-gradient(135deg, #800026, #e31a1c);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .logo-icon svg {
+    width: 20px;
+    height: 20px;
+    fill: white;
+  }
+
+  .header-title h1 {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -0.3px;
+  }
+
+  .header-title p {
+    font-size: 11px;
+    color: var(--text2);
+    font-family: var(--mono);
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .badge-dummy {
+    background: rgba(245,158,11,0.15);
+    border: 1px solid rgba(245,158,11,0.3);
+    color: #f59e0b;
+    font-size: 11px;
+    font-family: var(--mono);
+    padding: 4px 10px;
+    border-radius: 20px;
+    letter-spacing: 0.5px;
+  }
+
+  .badge-year {
+    background: rgba(96,165,250,0.15);
+    border: 1px solid rgba(96,165,250,0.3);
+    color: var(--accent2);
+    font-size: 11px;
+    font-family: var(--mono);
+    padding: 4px 10px;
+    border-radius: 20px;
+  }
+
+  /* MAIN LAYOUT */
+  .main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* SIDEBAR */
+  .sidebar {
+    width: 320px;
+    flex-shrink: 0;
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .sidebar-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+  }
+
+  .tab-btn {
+    flex: 1;
+    padding: 10px 0;
+    font-size: 12px;
+    font-family: var(--font);
+    font-weight: 500;
+    background: none;
+    border: none;
+    color: var(--text2);
+    cursor: pointer;
+    transition: all 0.2s;
+    border-bottom: 2px solid transparent;
+    letter-spacing: 0.2px;
+  }
+
+  .tab-btn.active {
+    color: var(--accent2);
+    border-bottom-color: var(--accent2);
+    background: rgba(59,130,246,0.05);
+  }
+
+  .tab-content {
+    display: none;
+    flex: 1;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border2) transparent;
+  }
+
+  .tab-content.active { display: block; }
+
+  /* STATS CARDS */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 14px;
+  }
+
+  .stat-card {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+  }
+
+  .stat-card .label {
+    font-size: 10px;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 6px;
+  }
+
+  .stat-card .value {
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1;
+    font-family: var(--mono);
+  }
+
+  .stat-card .sub {
+    font-size: 10px;
+    color: var(--text2);
+    margin-top: 3px;
+  }
+
+  .stat-card.danger .value { color: #ff4d6d; }
+  .stat-card.warning .value { color: #ff7b00; }
+  .stat-card.safe .value { color: #ffb703; }
+  .stat-card.info .value { color: #cbd5e1; }
+
+  /* LEGEND */
+  .legend-section {
+    padding: 0 14px 14px;
+  }
+
+  .section-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text2);
+    margin-bottom: 10px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    margin-bottom: 4px;
+    cursor: pointer;
+    transition: background 0.15s;
+    border: 1px solid transparent;
+  }
+
+  .legend-item:hover {
+    background: var(--bg3);
+    border-color: var(--border);
+  }
+
+  .legend-item.active {
+    background: var(--bg3);
+    border-color: var(--border2);
+  }
+
+  .legend-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+
+  .legend-text { flex: 1; }
+  .legend-text .name { font-size: 13px; font-weight: 500; }
+  .legend-text .desc { font-size: 10px; color: var(--text2); margin-top: 1px; }
+
+  .legend-count {
+    font-size: 11px;
+    font-family: var(--mono);
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.06);
+  }
+
+  /* KECAMATAN LIST */
+  .kec-list { padding: 0 14px 14px; }
+
+  .kec-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    margin-bottom: 6px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .kec-item:hover {
+    border-color: var(--accent);
+    background: rgba(59,130,246,0.05);
+  }
+
+  .kec-item.selected {
+    border-color: var(--accent2);
+    background: rgba(59,130,246,0.1);
+  }
+
+  .kec-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .kec-info { flex: 1; }
+  .kec-name { font-size: 13px; font-weight: 600; }
+  .kec-sub { font-size: 10px; color: var(--text2); margin-top: 2px; }
+
+  .kec-level {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 12px;
+    letter-spacing: 0.3px;
+  }
+
+  /* DETAIL PANEL */
+  .detail-panel {
+    padding: 14px;
+  }
+
+  .detail-empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text2);
+  }
+
+  .detail-empty .icon { font-size: 40px; margin-bottom: 12px; }
+  .detail-empty p { font-size: 13px; }
+
+  .detail-card {
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .detail-header {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .detail-header h3 { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+  .detail-header p { font-size: 11px; color: var(--text2); }
+
+  .detail-level-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 12px;
+    border-radius: 20px;
+    margin-top: 8px;
+    letter-spacing: 0.5px;
+  }
+
+  .detail-body { padding: 14px 16px; }
+
+  .detail-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+
+  .detail-row:last-child { border-bottom: none; }
+  .detail-row .key { color: var(--text2); }
+  .detail-row .val { font-weight: 600; font-family: var(--mono); }
+
+  .risk-bar-wrap { margin-top: 12px; }
+  .risk-bar-label { font-size: 11px; color: var(--text2); margin-bottom: 6px; }
+  .risk-bar-bg {
+    background: rgba(255,255,255,0.06);
+    border-radius: 4px;
+    height: 8px;
+    overflow: hidden;
+  }
+  .risk-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.5s ease;
+  }
+
+  /* MAP CONTAINER */
+  .map-wrap {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+
+  #map {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* LEAFLET OVERRIDES */
+  .leaflet-container {
+    background: #0d1626;
+    font-family: var(--font);
+  }
+
+  .leaflet-popup-content-wrapper {
+    background: #1a2235;
+    color: var(--text);
+    border: 1px solid var(--border2);
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    font-family: var(--font);
+  }
+
+  .leaflet-popup-tip { background: #1a2235; }
+  .leaflet-popup-content { margin: 14px 16px; min-width: 220px; }
+
+  .popup-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+  .popup-sub { font-size: 11px; color: var(--text2); margin-bottom: 10px; }
+  .popup-level {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 20px;
+    margin-bottom: 10px;
+  }
+  .popup-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .popup-row:last-child { border: none; }
+  .popup-row .k { color: var(--text2); }
+  .popup-row .v { font-weight: 600; font-family: var(--mono); }
+
+  /* MAP CONTROLS */
+  .map-controls {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .map-ctrl-btn {
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 16px;
+    transition: all 0.15s;
+  }
+
+  .map-ctrl-btn:hover {
+    background: var(--bg3);
+    border-color: var(--accent);
+    color: var(--accent2);
+  }
+
+  /* FILTER BAR */
+  .filter-bar {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    z-index: 1000;
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    max-width: 450px;
+  }
+
+  .filter-btn {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    color: var(--text2);
+    font-size: 11px;
+    font-family: var(--font);
+    font-weight: 500;
+    padding: 5px 12px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .filter-btn .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+  }
+
+  .filter-btn.active {
+    color: var(--text);
+    border-color: var(--border2);
+    background: var(--bg3);
+  }
+
+  .filter-btn.active.f-sangat { border-color: var(--c-sangat-tinggi); background: rgba(128,0,38,0.25); color: #fca5a5; }
+  .filter-btn.active.f-tinggi { border-color: var(--c-tinggi); background: rgba(227,26,28,0.25); color: #fecaca; }
+  .filter-btn.active.f-sedang { border-color: var(--c-sedang); background: rgba(253,141,60,0.25); color: #fed7aa; }
+  .filter-btn.active.f-rendah { border-color: var(--c-rendah); background: rgba(254,204,92,0.25); color: #fef08a; }
+  .filter-btn.active.f-sangat-rendah { border-color: #d9f99d; background: rgba(255,255,178,0.15); color: #e2e8f0; }
+
+  /* BOTTOM STATUS BAR */
+  .status-bar {
+    position: absolute;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 20px;
+    padding: 6px 16px;
+    font-size: 11px;
+    color: var(--text2);
+    font-family: var(--mono);
+    z-index: 1000;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 768px) {
+    .sidebar { width: 280px; }
+    .header-title p { display: none; }
+    .badge-year { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+    </div>
+    <div class="header-title">
+      <h1>SIG Kepadatan Penduduk – Kota Bandar Lampung</h1>
+      <p>Sistem Informasi Geografis · Data Dummy Kepadatan Kecamatan</p>
+    </div>
+  </div>
+  <div class="header-right">
+    <span class="badge-dummy">⚠ DATA DUMMY</span>
+    <span class="badge-year">2026</span>
+  </div>
+</header>
+
+<div class="main">
+  <div class="sidebar">
+    <div class="sidebar-tabs">
+      <button class="tab-btn active" onclick="switchTab('ringkasan', this)">Ringkasan</button>
+      <button class="tab-btn" onclick="switchTab('kecamatan', this)">Kecamatan</button>
+      <button class="tab-btn" onclick="switchTab('detail', this)">Detail</button>
+    </div>
+
+    <div id="tab-ringkasan" class="tab-content active">
+      <div class="stats-grid">
+        <div class="stat-card danger">
+          <div class="label">> 14.000</div>
+          <div class="value">2</div>
+          <div class="sub">Sangat Padat</div>
+        </div>
+        <div class="stat-card warning">
+          <div class="label">10K - 14K</div>
+          <div class="value">5</div>
+          <div class="sub">Padat Wilayah</div>
+        </div>
+        <div class="stat-card safe">
+          <div class="label">6K - 10K</div>
+          <div class="value">5</div>
+          <div class="sub">Sedang</div>
+        </div>
+        <div class="stat-card info">
+          <div class="label">< 6.000</div>
+          <div class="value">8</div>
+          <div class="sub">Rendah / S. Rendah</div>
+        </div>
+      </div>
+
+      <div class="legend-section">
+        <div class="section-title">Legenda Tingkat Kepadatan</div>
+        <div class="legend-item active" onclick="filterLayer('all')">
+          <div class="legend-dot" style="background:linear-gradient(45deg,#800026,#e31a1c,#fd8d3c,#fecc5c,#ffffb2)"></div>
+          <div class="legend-text">
+            <div class="name">Semua Wilayah</div>
+            <div class="desc">Total Kecamatan Terdata</div>
+          </div>
+          <span class="legend-count" style="color:var(--text2)">20</span>
+        </div>
+        <div class="legend-item" onclick="filterLayer('sangat_tinggi')">
+          <div class="legend-dot" style="background:#800026"></div>
+          <div class="legend-text">
+            <div class="name">Sangat Padat</div>
+            <div class="desc">&gt; 14.000 jiwa/km²</div>
+          </div>
+          <span class="legend-count" style="color:#ff4d6d">2</span>
+        </div>
+        <div class="legend-item" onclick="filterLayer('tinggi')">
+          <div class="legend-dot" style="background:#e31a1c"></div>
+          <div class="legend-text">
+            <div class="name">Padat</div>
+            <div class="desc">10.000 – 14.000 jiwa/km²</div>
+          </div>
+          <span class="legend-count" style="color:#ff7b00">5</span>
+        </div>
+        <div class="legend-item" onclick="filterLayer('sedang')">
+          <div class="legend-dot" style="background:#fd8d3c"></div>
+          <div class="legend-text">
+            <div class="name">Cukup Padat</div>
+            <div class="desc">6.000 – 10.000 jiwa/km²</div>
+          </div>
+          <span class="legend-count" style="color:#ffb703">5</span>
+        </div>
+        <div class="legend-item" onclick="filterLayer('rendah')">
+          <div class="legend-dot" style="background:#fecc5c"></div>
+          <div class="legend-text">
+            <div class="name">Rendah</div>
+            <div class="desc">3.000 – 6.000 jiwa/km²</div>
+          </div>
+          <span class="legend-count" style="color:#fecc5c">6</span>
+        </div>
+        <div class="legend-item" onclick="filterLayer('sangat_rendah')">
+          <div class="legend-dot" style="background:#ffffb2; border:1px solid rgba(255,255,255,0.2)"></div>
+          <div class="legend-text">
+            <div class="name">Sangat Rendah</div>
+            <div class="desc">&lt; 3.000 jiwa/km²</div>
+          </div>
+          <span class="legend-count" style="color:#ffffb2">2</span>
+        </div>
+      </div>
+
+      <div class="legend-section">
+        <div class="section-title">Informasi Makro Kota</div>
+        <div style="padding:4px 0">
+          <div class="detail-row">
+            <span class="key">Pusat Pemerintahan</span>
+            <span class="val" style="color:var(--accent2)">Kota Bandar Lampung</span>
+          </div>
+          <div class="detail-row">
+            <span class="key">Rerata Kepadatan</span>
+            <span class="val" style="color:#ff7b00">5.864 jiwa/km²</span>
+          </div>
+          <div class="detail-row">
+            <span class="key">Kecamatan Terpadat</span>
+            <span class="val" style="color:#ff4d6d">Tanjung Karang Timur</span>
+          </div>
+          <div class="detail-row">
+            <span class="key">Metode Klasifikasi</span>
+            <span class="val">Choropleth (Poligon Wilayah)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-kecamatan" class="tab-content">
+      <div class="kec-list" id="kecList" style="padding-top:14px"></div>
+    </div>
+
+    <div id="tab-detail" class="tab-content">
+      <div class="detail-panel">
+        <div class="detail-empty" id="detailEmpty">
+          <div class="icon">📍</div>
+          <p>Klik area poligon kecamatan pada peta atau pilih list kecamatan untuk melihat grafik visualisasi</p>
+        </div>
+        <div id="detailContent" style="display:none"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="map-wrap">
+    <div id="map"></div>
+
+    <div class="filter-bar" id="filterBar">
+      <button class="filter-btn active f-all" onclick="filterLayer('all', this)"><span class="dot" style="background:#888"></span> Semua</button>
+      <button class="filter-btn f-sangat" onclick="filterLayer('sangat_tinggi', this)"><span class="dot" style="background:#800026"></span> > 14K</button>
+      <button class="filter-btn f-tinggi" onclick="filterLayer('tinggi', this)"><span class="dot" style="background:#e31a1c"></span> 10K - 14K</button>
+      <button class="filter-btn f-sedang" onclick="filterLayer('sedang', this)"><span class="dot" style="background:#fd8d3c"></span> 6K - 10K</button>
+      <button class="filter-btn f-rendah" onclick="filterLayer('rendah', this)"><span class="dot" style="background:#fecc5c"></span> 3K - 6K</button>
+      <button class="filter-btn f-sangat-rendah" onclick="filterLayer('sangat_rendah', this)"><span class="dot" style="background:#ffffb2"></span> < 3K</button>
+    </div>
+
+    <div class="map-controls">
+      <div class="map-ctrl-btn" onclick="resetView()" title="Reset View">⌂</div>
+      <div class="map-ctrl-btn" onclick="toggleLabels()" title="Toggle Label" id="labelBtn">A</div>
+    </div>
+
+    <div class="status-bar" id="statusBar">
+      📍 Bandar Lampung · 20 Kecamatan Terdata · Klik Poligon Wilayah
+    </div>
+  </div>
+</div>
+
+<script>
+// === DATA 20 KECAMATAN SESUAI PERMINTAAN USER ===
+const kecamatanData = [
+  { id: 1, nama: "Teluk Betung Barat", density: 2091, level: "sangat_rendah", lat: -5.445, lng: 105.215, luas: 11.2 },
+  { id: 2, nama: "Teluk Betung Timur", density: 4677, level: "rendah", lat: -5.462, lng: 105.235, luas: 9.8 },
+  { id: 3, nama: "Teluk Betung Selatan", density: 10910, level: "tinggi", lat: -5.449, lng: 105.260, luas: 6.2 },
+  { id: 4, nama: "Bumi Waras", density: 12412, level: "tinggi", lat: -5.442, lng: 105.278, luas: 5.4 },
+  { id: 5, nama: "Panjang", density: 5283, level: "rendah", lat: -5.455, lng: 105.315, luas: 14.1 },
+  { id: 6, nama: "Tanjung Karang Timur", density: 17889, level: "sangat_tinggi", lat: -5.405, lng: 105.270, luas: 3.8 },
+  { id: 7, nama: "Kedamaian", density: 6255, level: "sedang", lat: -5.412, lng: 105.289, luas: 8.2 },
+  { id: 8, nama: "Teluk Betung Utara", density: 11215, level: "tinggi", lat: -5.428, lng: 105.258, luas: 4.9 },
+  { id: 9, nama: "Tanjung Karang Pusat", density: 14018, level: "tinggi", lat: -5.412, lng: 105.250, luas: 4.2 },
+  { id: 10, nama: "Enggal", density: 8871, level: "sedang", lat: -5.419, lng: 105.258, luas: 3.5 },
+  { id: 11, nama: "Tanjung Karang Barat", density: 5353, level: "rendah", lat: -5.401, lng: 105.235, luas: 9.2 },
+  { id: 12, nama: "Kemiling", density: 4024, level: "rendah", lat: -5.392, lng: 105.195, luas: 18.5 },
+  { id: 13, nama: "Langkapura", density: 8182, level: "sedang", lat: -5.385, lng: 105.222, luas: 6.4 },
+  { id: 14, density: 13527, nama: "Kedaton", level: "tinggi", lat: -5.378, lng: 105.255, luas: 7.1 },
+  { id: 15, nama: "Rajabasa", density: 4278, level: "rendah", lat: -5.365, lng: 105.215, luas: 12.4 },
+  { id: 16, nama: "Tanjung Senang", density: 6696, level: "sedang", lat: -5.355, lng: 105.285, luas: 8.9 },
+  { id: 17, nama: "Labuhan Ratu", density: 7747, level: "sedang", lat: -5.368, lng: 105.245, luas: 6.8 },
+  { id: 18, nama: "Sukarame", density: 6117, level: "sedang", lat: -5.385, lng: 105.292, luas: 11.4 },
+  { id: 19, nama: "Sukabumi", density: 2902, level: "sangat_rendah", lat: -5.405, lng: 105.322, luas: 13.5 },
+  { id: 20, nama: "Way Halim", density: 10676, level: "tinggi", lat: -5.382, lng: 105.270, luas: 5.8 }
+];
+
+const levelConfig = {
+  sangat_tinggi: { color: "#800026", fillOpacity: 0.65, label: "Sangat Padat (>14K)", bg: "rgba(128,0,38,0.2)" },
+  tinggi:        { color: "#e31a1c", fillOpacity: 0.55, label: "Padat (10K-14K)",    bg: "rgba(227,26,28,0.2)" },
+  sedang:        { color: "#fd8d3c", fillOpacity: 0.50, label: "Cukup Padat (6K-10K)", bg: "rgba(253,141,60,0.2)" },
+  rendah:        { color: "#fecc5c", fillOpacity: 0.45, label: "Rendah (3K-6K)",     bg: "rgba(254,204,92,0.2)" },
+  sangat_rendah: { color: "#ffffb2", fillOpacity: 0.40, label: "Sangat Rendah (<3K)", bg: "rgba(255,255,178,0.1)" },
+};
+
+// === INIT MAP (Fokus Bandar Lampung) ===
+const map = L.map('map', {
+  center: [-5.415, 105.260],
+  zoom: 12.5,
+  zoomControl: false
+});
+
+// Menggunakan basemap gelap bawaan agar warna choropleth menyala mencolok
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '© OpenStreetMap © CARTO',
+  subdomains: 'abcd',
+  maxZoom: 18
+}).addTo(map);
+
+L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+// === SIMULASI PEMBENTUKAN AREA MELIUK (BUKAN KOTAK) ===
+const polygonLayers = {};
+let allLayers = [];
+let showLabels = true;
+const labelMarkers = [];
+
+function createMeliukPolygon(kec) {
+  const cfg = levelConfig[kec.level];
+  const rLat = 0.012; 
+  const rLng = 0.016;
+
+  // Algoritma matematika untuk menghasilkan koordinat batas meliuk agar menyerupai lekukan peta SHP asli
+  const pts = [];
+  const sides = 10 + (kec.id % 4); 
+  for (let i = 0; i < sides; i++) {
+    const angle = (i / sides) * 2 * Math.PI;
+    // Jittering radius untuk merusak pola kotak/lingkaran agar berbentuk wilayah unik meliuk
+    const faktorBentuk = 0.8 + Math.sin(angle * 3 + kec.id) * 0.25;
+    pts.push([
+      kec.lat + Math.sin(angle) * rLat * faktorBentuk,
+      kec.lng + Math.cos(angle) * rLng * faktorBentuk
+    ]);
+  }
+
+  const poly = L.polygon(pts, {
+    color: '#1e293b',
+    weight: 1.5,
+    fillColor: cfg.color,
+    fillOpacity: cfg.fillOpacity,
+    opacity: 0.9
+  }).addTo(map);
+
+  poly.bindPopup(buildPopup(kec));
+
+  poly.on('mouseover', function() {
+    this.setStyle({ fillOpacity: 0.85, weight: 2.5, color: '#f8fafc' });
+    updateStatus(`📍 Kecamatan ${kec.nama} — Kepadatan: ${kec.density.toLocaleString('id-ID')} jiwa/km²`);
+  });
+
+  poly.on('mouseout', function() {
+    this.setStyle({ fillOpacity: cfg.fillOpacity, weight: 1.5, color: '#1e293b' });
+    updateStatus('📍 Bandar Lampung · 20 Kecamatan Terdata · Klik Poligon Wilayah');
+  });
+
+  poly.on('click', function() {
+    showDetail(kec);
+    highlightKecList(kec.id);
+    switchTab('detail', null);
+  });
+
+  return poly;
+}
+
+function buildPopup(kec) {
+  const cfg = levelConfig[kec.level];
+  return `
+    <div class="popup-title">Kec. ${kec.nama}</div>
+    <div class="popup-sub">Kota Bandar Lampung</div>
+    <span class="popup-level" style="background:${cfg.bg};color:${cfg.color};border:1px solid ${cfg.color}50">${cfg.label}</span>
+    <div class="popup-row"><span class="k">Kepadatan</span><span class="v" style="color:${cfg.color}; font-size:13px">${kec.density.toLocaleString('id-ID')} jiwa/km²</span></div>
+    <div class="popup-row"><span class="k">Estimasi Luas</span><span class="v">${kec.luas} km²</span></div>
+    <div class="popup-row"><span class="k">Estimasi Penduduk</span><span class="v">${Math.round(kec.density * kec.luas).toLocaleString('id-ID')} jiwa</span></div>
+  `;
+}
+
+// Menggambar seluruh area mosaik kecamatan
+kecamatanData.forEach(kec => {
+  const layer = createMeliukPolygon(kec);
+  polygonLayers[kec.id] = layer;
+  allLayers.push({ kec, layer });
+
+  // Membuat Label Text Kecamatan Di Atas Peta
+  const icon = L.divIcon({
+    className: '',
+    html: `<div style="font-size:10px;font-family:'Space Grotesk',sans-serif;color:rgba(255,255,255,0.9);white-space:nowrap;text-shadow:0 1px 4px rgba(0,0,0,1);font-weight:600;pointer-events:none">${kec.nama}</div>`,
+    iconAnchor: [20, 0]
+  });
+  const marker = L.marker([kec.lat, kec.lng], { icon, interactive: false }).addTo(map);
+  labelMarkers.push(marker);
+});
+
+// === SIDEBAR: URUTAN KECAMATAN TERPADAT ===
+function buildKecList() {
+  const container = document.getElementById('kecList');
+  const sorted = [...kecamatanData].sort((a,b) => b.density - a.density);
+  container.innerHTML = sorted.map(k => {
+    const cfg = levelConfig[k.level];
+    return `
+      <div class="kec-item" id="kec-item-${k.id}" onclick="selectKec(${k.id})">
+        <div class="kec-dot" style="background:${cfg.color}"></div>
+        <div class="kec-info">
+          <div class="kec-name">${k.nama}</div>
+          <div class="kec-sub">${k.density.toLocaleString('id-ID')} jiwa/km² · Luas: ${k.luas} km²</div>
+        </div>
+        <span class="kec-level" style="background:${cfg.bg};color:${cfg.color};border:1px solid ${cfg.color}30">${k.density > 10000 ? 'Padat' : 'Rendah'}</span>
+      </div>
+    `;
+  }).join('');
+}
+buildKecList();
+
+// === DETAIL MODUL (CHART & BAR PERSENTASE KEPADATAN) ===
+function showDetail(kec) {
+  const cfg = levelConfig[kec.level];
+  // Rasio perbandingan terhadap angka kepadatan tertinggi (Tanjung Karang Timur: 17889)
+  const nilaiPersentase = Math.min((kec.density / 17889) * 100, 100);
+
+  document.getElementById('detailEmpty').style.display = 'none';
+  const el = document.getElementById('detailContent');
+  el.style.display = 'block';
+  el.innerHTML = `
+    <div class="detail-card">
+      <div class="detail-header">
+        <h3>Kec. ${kec.nama}</h3>
+        <p>Klasifikasi Demografi · Kota Bandar Lampung</p>
+        <span class="detail-level-badge" style="background:${cfg.bg};color:${cfg.color};border:1px solid ${cfg.color}40">
+          ${cfg.label}
+        </span>
+      </div>
+      <div class="detail-body">
+        <div class="risk-bar-wrap">
+          <div class="risk-bar-label">Rasio Kepadatan Maksimum Kota</div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div class="risk-bar-bg" style="flex:1">
+              <div class="risk-bar-fill" style="width:${nilaiPersentase}%;background:${cfg.color}"></div>
+            </div>
+            <span style="font-size:13px;font-weight:700;font-family:var(--mono);color:${cfg.color}">${Math.round(nilaiPersentase)}%</span>
+          </div>
+        </div>
+
+        <div style="margin-top:16px">
+          <div class="detail-row"><span class="key">Angka Kepadatan</span><span class="val" style="color:${cfg.color}; font-size:14px">${kec.density.toLocaleString('id-ID')} jiwa/km²</span></div>
+          <div class="detail-row"><span class="key">Estimasi Luas Spasial</span><span class="val">${kec.luas} km²</span></div>
+          <div class="detail-row"><span class="key">Proyeksi Jiwa Terpapar</span><span class="val" style="color:var(--accent2)">${Math.round(kec.density * kec.luas).toLocaleString('id-ID')} Jiwa</span></div>
+          <div class="detail-row"><span class="key">Sistem Koordinat</span><span class="val">WGS 84 (EPSG:4326)</span></div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// === FILTER BAR INTERAKTIF ===
+function filterLayer(level, btn) {
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+
+  allLayers.forEach(({ kec, layer }) => {
+    if (level === 'all' || kec.level === level) {
+      map.addLayer(layer);
+    } else {
+      map.removeLayer(layer);
+    }
+  });
+}
+
+function selectKec(id) {
+  const kec = kecamatanData.find(k => k.id === id);
+  if (!kec) return;
+
+  map.flyTo([kec.lat, kec.lng], 14, { duration: 1.2 });
+  polygonLayers[id].openPopup();
+
+  showDetail(kec);
+  highlightKecList(id);
+  switchTab('detail', null);
+}
+
+function highlightKecList(id) {
+  document.querySelectorAll('.kec-item').forEach(el => el.classList.remove('selected'));
+  const el = document.getElementById(`kec-item-${id}`);
+  if (el) el.classList.add('selected');
+}
+
+function switchTab(name, btnEl) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+
+  document.getElementById(`tab-${name}`).classList.add('active');
+  if (btnEl) {
+    btnEl.classList.add('active');
+  } else {
+    const idx = { ringkasan: 0, kecamatan: 1, detail: 2 }[name];
+    document.querySelectorAll('.tab-btn')[idx].classList.add('active');
+  }
+}
+
+function resetView() {
+  map.flyTo([-5.415, 105.260], 12.5, { duration: 1 });
+}
+
+function toggleLabels() {
+  showLabels = !showLabels;
+  labelMarkers.forEach(m => {
+    if (showLabels) map.addLayer(m);
+    else map.removeLayer(m);
+  });
+  document.getElementById('labelBtn').style.color = showLabels ? '' : 'var(--text3)';
+}
+
+function updateStatus(text) {
+  document.getElementById('statusBar').textContent = text;
+}
+</script>
+</body>
+</html>
